@@ -76,6 +76,7 @@ El dataset está formado por 10 características (columnas) que presentan 900 su
 - Existence of previous police report of gender violence (string)
 - Number of victims (integer)
 
+
 La información contenida en el dataset es importante, ya que proporciona datos de contexto sobre los casos de asesinatos de mujeres por parte de de sus parejas o ex-parejas.
 
 A partir de este conjunto de datos, se plantea la problemática de determinar qué variables influyen más sobre el hecho de que ya se hubiera producido algún abuso previo, mediante el análisis de las correlaciones entre el hecho de reportes de abusos previos y otras características que definen el suceso, la realización de contrastes de hipótesis que nos proporcionen relaciones interesantes inferidas de los datos de la población, como por ejemplo la cohabitación, las edades, etc. Entendemos que el hecho de que ya se hubiera producido algún abuso previo, es un factor determinante en el hecho de que dicho abuso se convierta en agresión y que esta pueda llevar al asesinato.
@@ -159,6 +160,11 @@ if (!require("XNomial")) {
    library(XNomial)
 }
 
+if (!require("car")) {
+   install.packages("car")
+   library(car)
+}
+
 ```
 
 
@@ -197,7 +203,6 @@ Siguiendo el criterio establecido en el apartado 2.2, vamos a eliminar del datse
 
 #ViolenciaGenero <- select(ViolenciaGenero,-Province, -Victims)
 
-ViolenciaGenero <- select(ViolenciaGenero, -Victims)
 
 
 ```
@@ -312,6 +317,8 @@ ViolenciaGenero$Agressor.Age <- as.numeric(factor(ViolenciaGenero$Agressor.Age))
 ViolenciaGenero$Living.Together <- as.numeric(factor(ViolenciaGenero$Living.Together))
 
 ViolenciaGenero$Province <- as.numeric(factor(ViolenciaGenero$Province))
+
+
 
 
 ```
@@ -447,6 +454,81 @@ head(ViolenciaGenero.Relation.Expartner)
 
 ## 2.4.3 - Comprobación de homogeneidad y normalidad de la varianza
 
+Para la comprobación de que los valores que toman nuestras variables cuantitativas provienen de una población distribuida normalmente, utilizaremos la prueba de normalidad deShapiro. Se comprueba si el p-valor es superior al nivel de significación prefijado alfa = 0.05. Si esto se cumple, entonces se considera que variable en cuestión sigue una distribución normal.
+
+```{r,eval=TRUE,echo=TRUE}
+
+alpha = 0.05
+
+col.names = colnames(ViolenciaGenero)
+
+for (i in 1:ncol(ViolenciaGenero)) 
+  {
+    if (i == 1) cat("Variables que no siguen una distribución normal:\n")
+      if (is.integer(ViolenciaGenero[,i]) | is.numeric(ViolenciaGenero[,i])) 
+        {
+          p_val = shapiro.test(ViolenciaGenero[,i])$p.value
+          if (p_val < alpha) {
+                              cat(col.names[i])
+                              if (i < ncol(ViolenciaGenero) - 1) cat(", ")
+                              if (i %% 2 == 0) cat("\n")
+                            }
+        }
+  }
+
+
+```
+
+
+Podemos comprobarlo gráficamente por ejemplo con la variable Agessor.Age.
+
+```{r,eval=TRUE,echo=TRUE}
+
+
+ggplot(data = ViolenciaGenero, aes(x = Agressor.Age)) +
+  geom_histogram(aes(y = ..density..,fill = ..count..)) +
+  stat_function(fun = dnorm, colour = "firebrick",
+                args = list(mean = mean(ViolenciaGenero$Agressor.Age),
+                            sd = sd(ViolenciaGenero$Agressor.Age))) +
+  ggtitle("Histograma + curva normal teórica (Agressor.Age)")
+
+
+```
+
+```{r,eval=TRUE,echo=TRUE}
+
+qplot(Agressor.Age, data = ViolenciaGenero,geom="density")+ geom_vline(xintercept = 
+mean(ViolenciaGenero$Agressor.Age),color="red")+ geom_vline(xintercept = 
+median(ViolenciaGenero$Agressor.Age), color="blue")
+
+```
+
+**Vemos que ninguna variable es Normal**
+
+Seguidamente, pasamos a estudiar la homogeneidad de varianzas.
+
+Como ninguna de las variables es normal aplicaremos el test de Levene entre Victims y las variables que vamos a utilizar. Este test prueba la hipótesis nula de que las varianzas poblacionales son iguales.
+
+
+```{r,eval=TRUE,echo=TRUE}
+
+
+leveneTest(Victims ~ factor(ViolenciaGenero$Month), ViolenciaGenero, center=median)
+leveneTest(Victims ~ factor(ViolenciaGenero$Year), ViolenciaGenero , center=median)
+leveneTest(Victims ~ factor(ViolenciaGenero$Autonomous.Community), ViolenciaGenero, center=median)
+leveneTest(Victims ~ factor(ViolenciaGenero$Relation), ViolenciaGenero, center=median)
+leveneTest(Victims ~ factor(ViolenciaGenero$Victim.Age), ViolenciaGenero, center=median)
+leveneTest(Victims ~ factor(ViolenciaGenero$Agressor.Age), ViolenciaGenero, center=median)
+leveneTest(Victims ~ factor(ViolenciaGenero$Previous.Abuse.Report), ViolenciaGenero, center=median)
+leveneTest(Victims ~ factor(ViolenciaGenero$Living.Together), ViolenciaGenero, center=median)
+leveneTest(Victims ~ factor(ViolenciaGenero$Province), ViolenciaGenero, center=median)
+
+```
+
+Si el P-valor resultante de la prueba de Levene es inferior a un cierto nivel de significación (típicamente 0.05), es poco probable que las diferencias obtenidas en las variaciones de la muestra se hayan producido sobre la base de un muestreo aleatorio de una población con varianzas iguales. Por lo tanto, la hipótesis nula de igualdad de varianzas se rechaza y se concluye que hay una diferencia entre las variaciones en la población.
+
+Los resultados indican que **no hay diferencias significativas** entre las varianzas de los grupos, es decir existe homogeneidad de varianza u homocedasticidad.
+
 
 ## 2.4.4 - Tablas de Contingencia
 
@@ -466,7 +548,9 @@ TablaCAMonth.PAR
 ```
 ```{r,eval=TRUE,echo=TRUE}
 
-# plot(TablaCAMonth.PAR, col = c("red", "blue"), main = "Autonomous Community vs. Previous abuse report")
+ #plot(TablaCAMonth.PAR, col = c("red", "blue", "green"), main = "Autonomous Community vs. Previous abuse report")
+
+plot(ViolenciaGenero.Televada.Verano[, c("Autonomous.Community", "Month", "Previous.Abuse.Report")],col = c("red", "blue", "green"))
 
 ```
 
@@ -485,11 +569,12 @@ TablaJovenes.PAR
 ```
 ```{r,eval=TRUE,echo=TRUE}
 
-plot(TablaJovenes.PAR, col = c("red", "blue","green"), main = "Young Agressor's Age vs. Previous abuse report",xlab = "Pevious abuse report", ylab = "Young Aggressor's Age",xaxt='n')
+#plot(TablaJovenes.PAR, col = c("red", "blue","green"), main = "Young Agressor's Age vs. Previous abuse report",xlab = "Pevious abuse report", ylab = "Young Aggressor's #Age",xaxt='n')
 #axis(1, at=c(1,2,3), labels = c("Yes","Unknown","No"))
 
 #hist(TablaJovenes.PAR)
 
+plot(TablaJovenes.PAR, col = c("red", "blue", "green", "cyan"), main = "Young Agressor's Age vs. Previous abuse report")
 
 
 ```
